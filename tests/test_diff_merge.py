@@ -49,7 +49,8 @@ def random_edit(rng, ds, tag):
         elif op == "del":
             del ds[fid]
         elif op == "ins":
-            ds[f"n_{tag}_{rng.randint(0, 10**6)}"] = {"props": {"a": 1}, "geom": {"type": "Point", "coords": [rng.uniform(0, 5), 999.0]}}
+            pt = {"type": "Point", "coords": [rng.uniform(0, 5), 999.0]}
+            ds[f"n_{tag}_{rng.randint(0, 10**6)}"] = {"props": {"a": 1}, "geom": pt}
         elif seq is not None and len(seq) > 4:
             i = rng.randrange(len(seq))
             if op == "move":

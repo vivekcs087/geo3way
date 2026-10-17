@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use geo3way, please cite the software and the paper describing it."
+title: "geo3way: geometry-aware diff and three-way merge for vector spatial data"
+version: 0.2.0
+license: MIT
+authors:
+  - family-names: Shukla
+    given-names: Vivek
+    # affiliation: "TODO"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+repository-code: "https://github.com/OWNER/geo3way"
+keywords: [GIS, version control, three-way merge, spatial conflicts, GeoJSON, GeoPackage]
+# After the first GitHub release, add the Zenodo DOI:
+# doi: 10.5281/zenodo.XXXXXXX
+preferred-citation:
+  type: article
+  title: "Geometry-aware diff and merge for vector spatial data: design and evaluation against line-based version control"
+  authors:
+    - family-names: Shukla
+      given-names: Vivek
+  year: 2026
+  status: preprint

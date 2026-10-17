@@ -28,7 +28,7 @@ from .diff import (
     parts,
     seq_hunks,
 )
-from .geometry import bbox, bbox_intersects, hausdorff, polygons_overlap, validity_errors
+from .geometry import AREAL, bbox, bbox_intersects, hausdorff, polygons_overlap, validity_errors
 
 
 @dataclass
@@ -91,7 +91,7 @@ def merge_sequences(base: list[list[float]], ours: list[list[float]], theirs: li
 def _merge_props(b: dict[str, Any], o: dict[str, Any], t: dict[str, Any]
                  ) -> tuple[dict[str, Any], list[str]]:
     out, bad = {}, []
-    for k in set(b) | set(o) | set(t):
+    for k in dict.fromkeys([*o, *t, *b]):               # stable key order: ours first
         vb, vo, vt = b.get(k, _MISSING), o.get(k, _MISSING), t.get(k, _MISSING)
         if vo == vt:
             v = vo
@@ -123,7 +123,7 @@ def _merge_geom(b: dict[str, Any], o: dict[str, Any], t: dict[str, Any], eps: fl
         if m is None:
             return copy.deepcopy(o), Conflict("GEOMETRY", (), f"part {k}: {why}"), ""
         merged.append(m)
-    return from_parts(b["type"], merged), None, "combined"
+    return from_parts(b["type"], merged, like=b), None, "combined"
 
 
 def merge(base: Dataset, ours: Dataset, theirs: Dataset, eps: float = 1e-3,
@@ -198,20 +198,20 @@ def _duplicates(base: Dataset, ours: Dataset, theirs: Dataset, tol: float) -> li
         for b in ins_t:
             gb = theirs[b]["geom"]
             if ga["type"] == gb["type"] and bbox_intersects(ba, boxes_t[b], pad=tol) \
-                    and hausdorff(ga, gb) <= tol:
+                    and hausdorff(ga, gb, step=tol / 2) <= tol:
                 out.append(Conflict("DUPLICATE", (a, b), f"Hausdorff <= {tol}"))
     return out
 
 
 def _overlapped_in(v: Dataset, a: str, b: str) -> bool:
-    return (a in v and b in v and v[a]["geom"]["type"] == "Polygon"
-            and v[b]["geom"]["type"] == "Polygon"
+    return (a in v and b in v and v[a]["geom"]["type"] in AREAL
+            and v[b]["geom"]["type"] in AREAL
             and polygons_overlap(v[a]["geom"], v[b]["geom"]))
 
 
 def _new_overlaps(base: Dataset, ours: Dataset, theirs: Dataset, merged: Dataset,
                   eps: float) -> list[Conflict]:
-    polys = {k: f for k, f in merged.items() if f["geom"]["type"] == "Polygon"}
+    polys = {k: f for k, f in merged.items() if f["geom"]["type"] in AREAL}
     if not polys:
         return []
     touched = {k for k in polys

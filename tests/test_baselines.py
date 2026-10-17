@@ -2,10 +2,9 @@ import random
 import shutil
 import unittest
 
-from test_diff_merge import random_dataset, random_edit
-
 from geo3way import datasets_equal
 from geo3way.baselines import FORMATS, line_merge, parse, serialise
+from test_diff_merge import random_dataset, random_edit
 
 
 class TestSerialisation(unittest.TestCase):

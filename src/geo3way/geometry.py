@@ -2,7 +2,8 @@
 
 Geometries are plain dicts: {"type": "Point", "coords": [x, y]},
 {"type": "LineString", "coords": [[x, y], ...]},
-{"type": "Polygon", "coords": [ring, ...]} with closed rings (first vertex == last vertex).
+{"type": "Polygon", "coords": [shell, hole, ...]} with closed rings (first vertex == last),
+and the Multi* equivalents (MultiPoint, MultiLineString, MultiPolygon) as in GeoJSON.
 """
 from __future__ import annotations
 
@@ -12,6 +13,16 @@ from typing import Any
 
 Coord = Sequence[float]
 Geometry = dict[str, Any]
+AREAL = ("Polygon", "MultiPolygon")
+
+
+def polygons(g: Geometry) -> list[list[Any]]:
+    """Member polygons (each a list of rings) of a Polygon or MultiPolygon."""
+    if g["type"] == "Polygon":
+        return [g["coords"]]
+    if g["type"] == "MultiPolygon":
+        return list(g["coords"])
+    return []
 
 
 def bbox(g: Geometry) -> tuple[float, float, float, float]:
@@ -29,10 +40,12 @@ def vertices(g: Geometry) -> list[Coord]:
     t, c = g["type"], g["coords"]
     if t == "Point":
         return [c]
-    if t == "LineString":
+    if t in ("LineString", "MultiPoint"):
         return list(c)
-    if t == "Polygon":
+    if t in ("Polygon", "MultiLineString"):
         return [p for ring in c for p in ring]
+    if t == "MultiPolygon":
+        return [p for poly in c for ring in poly for p in ring]
     raise ValueError(f"unsupported geometry type {t!r}")
 
 
@@ -79,32 +92,62 @@ def ring_is_simple(ring: Sequence[Coord]) -> bool:
     return True
 
 
+def _finite_point(p: Any) -> bool:
+    return isinstance(p, (list, tuple)) and len(p) >= 2 and all(
+        isinstance(v, (int, float)) and math.isfinite(v) for v in p)
+
+
+def _polygon_errors(rings: Any, prefix: str = "") -> list[str]:
+    errs: list[str] = []
+    if not rings:
+        return [f"{prefix}polygon has no rings"]
+    for k, ring in enumerate(rings):
+        if len(ring) < 4:
+            errs.append(f"{prefix}ring {k} has fewer than 4 coordinates")
+            continue
+        if not all(_finite_point(p) for p in ring):
+            errs.append(f"{prefix}ring {k} has non-finite coordinates")
+            continue
+        if list(ring[0]) != list(ring[-1]):
+            errs.append(f"{prefix}ring {k} is not closed")
+            continue
+        if abs(ring_area(ring)) == 0:
+            errs.append(f"{prefix}ring {k} has zero area")
+        if not ring_is_simple(ring):
+            errs.append(f"{prefix}ring {k} self-intersects")
+    return errs
+
+
 def validity_errors(g: Geometry) -> list[str]:
-    """Simple-feature validity checks; an empty list means valid."""
+    """Simple-feature validity checks; an empty list means valid.
+
+    Checked: coordinate counts, finiteness, closed rings, non-zero ring area, simple
+    (non-self-intersecting) rings. Not checked: hole-in-shell containment and ring-ring
+    intersections between different rings."""
     t, c = g.get("type"), g.get("coords")
     errs: list[str] = []
     if c is None:
         return ["geometry has no coordinates"]
     if t == "Point":
-        if not (isinstance(c, (list, tuple)) and len(c) == 2 and all(map(math.isfinite, c))):
+        if not (_finite_point(c) and len(c) == 2):
             errs.append("point must have two finite coordinates")
+    elif t == "MultiPoint":
+        if not c or not all(_finite_point(p) for p in c):
+            errs.append("multipoint needs at least one point with finite coordinates")
     elif t == "LineString":
         if len(c) < 2:
             errs.append("linestring needs at least 2 vertices")
-    elif t == "Polygon":
+    elif t == "MultiLineString":
         if not c:
-            errs.append("polygon has no rings")
-        for k, ring in enumerate(c):
-            if len(ring) < 4:
-                errs.append(f"ring {k} has fewer than 4 coordinates")
-                continue
-            if list(ring[0]) != list(ring[-1]):
-                errs.append(f"ring {k} is not closed")
-                continue
-            if abs(ring_area(ring)) == 0:
-                errs.append(f"ring {k} has zero area")
-            if not ring_is_simple(ring):
-                errs.append(f"ring {k} self-intersects")
+            errs.append("multilinestring has no lines")
+        errs += [f"line {k} needs at least 2 vertices" for k, ln in enumerate(c) if len(ln) < 2]
+    elif t == "Polygon":
+        errs += _polygon_errors(c)
+    elif t == "MultiPolygon":
+        if not c:
+            errs.append("multipolygon has no polygons")
+        for k, poly in enumerate(c):
+            errs += _polygon_errors(poly, f"polygon {k}: ")
     else:
         errs.append(f"unsupported geometry type {t!r}")
     return errs
@@ -154,31 +197,91 @@ def _interior_samples(ring: Sequence[Coord]) -> list[list[float]]:
     return pts
 
 
-def polygons_overlap(a: Geometry, b: Geometry) -> bool:
-    """True if the interiors of two polygons (outer rings) overlap.
-
-    Robust to degenerate contacts (a vertex exactly on the other's edge, shared edges,
-    identical polygons): besides proper edge crossings, it tests whether any vertex, or any
-    point just inside an edge, of one polygon lies strictly inside the other."""
-    ra, rb = a["coords"][0], b["coords"][0]
-    if not bbox_intersects(bbox(a), bbox(b)):
+def _strictly_in_polygon(p: Coord, rings: Sequence[Sequence[Coord]], tol: float = 1e-9) -> bool:
+    """Strictly inside the shell and not inside (or on the boundary of) any hole."""
+    if not strictly_inside(p, rings[0], tol):
         return False
-    for i in range(len(ra) - 1):
-        for j in range(len(rb) - 1):
-            if segments_properly_cross(ra[i], ra[i + 1], rb[j], rb[j + 1]):
+    return not any(point_in_ring(p, h) or any(_on_segment(p, h[i], h[i + 1], tol)
+                                              for i in range(len(h) - 1)) for h in rings[1:])
+
+
+def _ring_bbox(ring: Sequence[Coord]) -> tuple[float, float, float, float]:
+    xs, ys = [p[0] for p in ring], [p[1] for p in ring]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _single_polygons_overlap(pa: Sequence[Sequence[Coord]], pb: Sequence[Sequence[Coord]]) -> bool:
+    if not bbox_intersects(_ring_bbox(pa[0]), _ring_bbox(pb[0])):
+        return False
+    for ra in pa:
+        for rb in pb:
+            for i in range(len(ra) - 1):
+                for j in range(len(rb) - 1):
+                    if segments_properly_cross(ra[i], ra[i + 1], rb[j], rb[j + 1]):
+                        return True
+    for p, q in ((pa, pb), (pb, pa)):
+        for ring in p:
+            if any(_strictly_in_polygon(v, q) for v in ring[:-1]):
                 return True
-    for p, q in ((ra, rb), (rb, ra)):
-        if any(strictly_inside(v, q) for v in p[:-1]):
-            return True
-        if any(strictly_inside(s, q) for s in _interior_samples(p)):
-            return True
+            if any(_strictly_in_polygon(s, q) and _strictly_in_polygon(s, p)
+                   for s in _interior_samples(ring) + _interior_samples(list(reversed(ring)))):
+                return True
     return False
 
 
-def hausdorff(a: Geometry, b: Geometry) -> float:
-    """Discrete Hausdorff distance between the vertex sets of two geometries."""
-    va, vb = vertices(a), vertices(b)
+def polygons_overlap(a: Geometry, b: Geometry) -> bool:
+    """True if the interiors of two (multi)polygons overlap. Holes are respected.
 
-    def directed(p: list[Coord], q: list[Coord]) -> float:
-        return max(min(math.dist(x, y) for y in q) for x in p)
-    return max(directed(va, vb), directed(vb, va))
+    Robust to degenerate contacts (a vertex exactly on the other's edge, shared edges,
+    identical polygons): besides proper edge crossings, it tests whether any vertex, or any
+    point just beside an edge, of one polygon lies strictly inside both polygons."""
+    if not bbox_intersects(bbox(a), bbox(b)):
+        return False
+    return any(_single_polygons_overlap(pa, pb) for pa in polygons(a) for pb in polygons(b))
+
+
+def _edges(g: Geometry) -> list[tuple[Coord, Coord]]:
+    t, c = g["type"], g["coords"]
+    if t in ("Point", "MultiPoint"):
+        pts = [c] if t == "Point" else list(c)
+        return [(p, p) for p in pts]
+    seqs = {"LineString": lambda: [c], "MultiLineString": lambda: list(c),
+            "Polygon": lambda: list(c),
+            "MultiPolygon": lambda: [r for poly in c for r in poly]}[t]()
+    return [(s[i], s[i + 1]) for s in seqs for i in range(len(s) - 1)] or \
+        [(p, p) for s in seqs for p in s]
+
+
+def _point_seg_dist(p: Coord, a: Coord, b: Coord) -> float:
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    L2 = dx * dx + dy * dy
+    t = 0.0 if L2 == 0 else max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2))
+    return math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy))
+
+
+def _samples(edges: list[tuple[Coord, Coord]], step: float, cap: int = 64) -> list[Coord]:
+    pts: list[Coord] = []
+    for a, b in edges:
+        n = min(cap, max(1, int(math.ceil(math.dist(a[:2], b[:2]) / step)))) if step > 0 else 1
+        pts.extend([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]
+                   for k in range(n))
+        pts.append(b)
+    return pts
+
+
+def hausdorff(a: Geometry, b: Geometry, step: float | None = None) -> float:
+    """Hausdorff distance between the boundaries (vertex/edge sets) of two geometries.
+
+    Points of each geometry (vertices, plus edge points every ``step``) are measured to the
+    other geometry's edges, so differences in vertex count or placement along an edge do not
+    inflate the distance. With ``step=None`` edges are sampled at 1/50 of the larger bbox
+    diagonal; the result is then accurate to within that sampling distance."""
+    ea, eb = _edges(a), _edges(b)
+    if step is None:
+        ba, bb = bbox(a), bbox(b)
+        diag = max(math.hypot(x[2] - x[0], x[3] - x[1]) for x in (ba, bb))
+        step = diag / 50
+
+    def directed(src: list[tuple[Coord, Coord]], dst: list[tuple[Coord, Coord]]) -> float:
+        return max(min(_point_seg_dist(p, u, v) for u, v in dst) for p in _samples(src, step))
+    return max(directed(ea, eb), directed(eb, ea))

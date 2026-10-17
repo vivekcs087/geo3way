@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geo3way"
+version = "0.2.0"
+description = "Geometry-aware diff and three-way merge for vector GIS data (GeoJSON, GeoPackage), with spatial conflict detection and a git merge driver"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Vivek Shukla" }]
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["gis", "version control", "merge", "diff", "geojson", "geopackage", "git",
+            "spatial data", "conflict detection"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Topic :: Software Development :: Version Control",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "mypy"]
+experiments = ["numpy", "pandas", "matplotlib"]
+
+[project.scripts]
+geo3way = "geo3way.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/OWNER/geo3way"
+Issues = "https://github.com/OWNER/geo3way/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]

@@ -1,0 +1,7 @@
+{"type": "FeatureCollection", "name": "buildings", "crs": {"type": "name", "properties": {"name": "urn:ogc:def:crs:EPSG::25832"}}, "features": [
+{"type": "Feature", "id": "b1", "properties": {"use": "residential", "height": 9.0, "floors": 4}, "geometry": {"type": "Polygon", "coordinates": [[[500000, 5700000], [500010.0, 5700000], [500020, 5700000], [500020, 5700012], [500010, 5700013], [500000, 5700013], [500000, 5700000]]]}},
+{"type": "Feature", "id": "b2", "properties": {"use": "retail", "height": 6.5, "floors": 2}, "geometry": {"type": "Polygon", "coordinates": [[[500030, 5700000], [500038.0, 5700000], [500046, 5700000], [500046, 5700012], [500038.0, 5700012], [500030, 5700012], [500030, 5700000]]]}},
+{"type": "Feature", "id": "b3", "properties": {"use": "residential", "height": 12.0, "floors": 4}, "geometry": {"type": "Polygon", "coordinates": [[[500052, 5700000], [500069.0, 5700000], [500078, 5700000], [500078, 5700014], [500069.0, 5700014], [500052, 5700014], [500052, 5700000]]]}},
+{"type": "Feature", "id": "r1", "properties": {"kind": "road", "name": "Mill Lane"}, "geometry": {"type": "LineString", "coordinates": [[499990, 5699992], [500040, 5699992], [500060, 5699990.5], [500090, 5699992]]}},
+{"type": "Feature", "id": "shed-b", "properties": {"use": "shed", "height": 3.0, "floors": 1}, "geometry": {"type": "Polygon", "coordinates": [[[500100.2, 5700000.1], [500106.1, 5700000.1], [500106.1, 5700004.2], [500100.2, 5700004.2], [500100.2, 5700000.1]]]}}
+]}

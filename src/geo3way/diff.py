@@ -22,24 +22,59 @@ def snap(c: Any, eps: float) -> tuple[int, ...]:
     return tuple(int(round(v / eps)) for v in c)
 
 
+GEOMETRY_TYPES = ("Point", "LineString", "Polygon", "MultiPoint", "MultiLineString",
+                  "MultiPolygon")
+
+
 def parts(geom: dict[str, Any]) -> list[list[list[float]]]:
-    """Vertex sequences of a geometry; polygon rings are returned open (no closing vertex)."""
+    """Vertex sequences of a geometry, flattened; polygon rings are returned open (no closing
+    vertex). A MultiPoint is one sequence of points; a MultiPolygon is all rings of all
+    member polygons in order (see :func:`layout`)."""
     t, c = geom["type"], geom["coords"]
     if t == "Point":
         return [[list(c)]]
-    if t == "LineString":
+    if t in ("LineString", "MultiPoint"):
         return [[list(p) for p in c]]
+    if t == "MultiLineString":
+        return [[list(p) for p in line] for line in c]
     if t == "Polygon":
         return [[list(p) for p in ring[:-1]] for ring in c]
+    if t == "MultiPolygon":
+        return [[list(p) for p in ring[:-1]] for poly in c for ring in poly]
     raise ValueError(f"unsupported geometry type {t!r}")
 
 
-def from_parts(gtype: str, ps: list[list[list[float]]]) -> dict[str, Any]:
+def layout(geom: dict[str, Any]) -> tuple[Any, ...]:
+    """Structure of a geometry: two geometries with the same type and layout have
+    corresponding parts, so they can be merged vertex by vertex."""
+    t, c = geom["type"], geom["coords"]
+    if t == "MultiPolygon":
+        return (t, tuple(len(poly) for poly in c))
+    return (t, len(parts(geom)))
+
+
+def from_parts(gtype: str, ps: list[list[list[float]]],
+               like: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Inverse of :func:`parts`. ``like`` (a geometry with the same layout) is needed for
+    MultiPolygon, to know how many rings each member polygon has."""
     if gtype == "Point":
         return {"type": "Point", "coords": ps[0][0]}
-    if gtype == "LineString":
-        return {"type": "LineString", "coords": ps[0]}
-    return {"type": "Polygon", "coords": [r + [r[0]] if r else [] for r in ps]}
+    if gtype in ("LineString", "MultiPoint"):
+        return {"type": gtype, "coords": ps[0]}
+    if gtype == "MultiLineString":
+        return {"type": gtype, "coords": ps}
+    rings = [r + [r[0]] if r else [] for r in ps]
+    if gtype == "Polygon":
+        return {"type": "Polygon", "coords": rings}
+    if gtype == "MultiPolygon":
+        if like is None:
+            raise ValueError("from_parts needs a template geometry for MultiPolygon")
+        out, k = [], 0
+        for n in layout(like)[1]:
+            out.append(rings[k:k + n])
+            k += n
+        return {"type": gtype, "coords": out}
+    raise ValueError(f"unsupported geometry type {gtype!r}")
 
 
 def seq_hunks(a: list[list[float]], b: list[list[float]], eps: float) -> list[Hunk]:
@@ -51,7 +86,7 @@ def seq_hunks(a: list[list[float]], b: list[list[float]], eps: float) -> list[Hu
 
 
 def geom_equal(g1: dict[str, Any], g2: dict[str, Any], eps: float) -> bool:
-    if g1["type"] != g2["type"]:
+    if g1["type"] != g2["type"] or layout(g1) != layout(g2):
         return False
     p1, p2 = parts(g1), parts(g2)
     return len(p1) == len(p2) and all(
@@ -64,7 +99,7 @@ def geom_diff(g0: dict[str, Any], g1: dict[str, Any], eps: float) -> dict[str, A
     if geom_equal(g0, g1, eps):
         return None
     p0, p1 = parts(g0), parts(g1)
-    if g0["type"] != g1["type"] or len(p0) != len(p1):
+    if layout(g0) != layout(g1):
         return {"replace": g1}
     out = {}
     for k, (a, b) in enumerate(zip(p0, p1, strict=True)):
@@ -123,7 +158,7 @@ def apply_geom(g: dict[str, Any], gd: dict[str, Any]) -> dict[str, Any]:
     ps = parts(g)
     for k, hunks in gd["parts"].items():
         ps[int(k)] = apply_hunks(ps[int(k)], [tuple(h) for h in hunks])  # type: ignore[misc]
-    return from_parts(g["type"], ps)
+    return from_parts(g["type"], ps, like=g)
 
 
 def apply_props(p: dict[str, Any], pd: dict[str, Any]) -> dict[str, Any]:
