@@ -83,6 +83,8 @@ def validity_errors(g: Geometry) -> list[str]:
     """Simple-feature validity checks; an empty list means valid."""
     t, c = g.get("type"), g.get("coords")
     errs: list[str] = []
+    if c is None:
+        return ["geometry has no coordinates"]
     if t == "Point":
         if not (isinstance(c, (list, tuple)) and len(c) == 2 and all(map(math.isfinite, c))):
             errs.append("point must have two finite coordinates")

@@ -141,7 +141,9 @@ def merge(base: Dataset, ours: Dataset, theirs: Dataset, eps: float = 1e-3,
                     res.conflicts.append(Conflict("INSERT_INSERT", (fid,)))
                 res.merged[fid] = copy.deepcopy(o)
             else:
-                res.merged[fid] = copy.deepcopy(o if o is not None else t)
+                only = o if o is not None else t
+                assert only is not None
+                res.merged[fid] = copy.deepcopy(only)
             continue
         changed_o = o is None or o["props"] != b["props"] or not geom_equal(o["geom"], b["geom"], eps)
         changed_t = t is None or t["props"] != b["props"] or not geom_equal(t["geom"], b["geom"], eps)
@@ -149,6 +151,7 @@ def merge(base: Dataset, ours: Dataset, theirs: Dataset, eps: float = 1e-3,
             if o is None and t is None:
                 continue
             survivor, survivor_changed = (t, changed_t) if o is None else (o, changed_o)
+            assert survivor is not None
             if survivor_changed:
                 res.conflicts.append(Conflict("DELETE_MODIFY", (fid,)))
                 res.merged[fid] = copy.deepcopy(survivor)
@@ -200,6 +203,12 @@ def _duplicates(base: Dataset, ours: Dataset, theirs: Dataset, tol: float) -> li
     return out
 
 
+def _overlapped_in(v: Dataset, a: str, b: str) -> bool:
+    return (a in v and b in v and v[a]["geom"]["type"] == "Polygon"
+            and v[b]["geom"]["type"] == "Polygon"
+            and polygons_overlap(v[a]["geom"], v[b]["geom"]))
+
+
 def _new_overlaps(base: Dataset, ours: Dataset, theirs: Dataset, merged: Dataset,
                   eps: float) -> list[Conflict]:
     polys = {k: f for k, f in merged.items() if f["geom"]["type"] == "Polygon"}
@@ -228,10 +237,6 @@ def _new_overlaps(base: Dataset, ours: Dataset, theirs: Dataset, merged: Dataset
             if not bbox_intersects(bx, boxes[b]) or not polygons_overlap(polys[a]["geom"], polys[b]["geom"]):
                 continue
 
-            def overlapped_in(v: Dataset) -> bool:
-                return (a in v and b in v and v[a]["geom"]["type"] == "Polygon"
-                        and v[b]["geom"]["type"] == "Polygon"
-                        and polygons_overlap(v[a]["geom"], v[b]["geom"]))
-            if not any(overlapped_in(v) for v in (base, ours, theirs)):
+            if not any(_overlapped_in(v, a, b) for v in (base, ours, theirs)):
                 out.append(Conflict("OVERLAP", pair, "polygons overlap only after merging"))
     return out

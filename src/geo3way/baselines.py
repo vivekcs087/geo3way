@@ -135,7 +135,7 @@ def _owners(lines: list[str], fmt: str) -> list[str | None]:
         return [(m.group(1) if (m := rx.search(ln)) else None) for ln in lines]
     owner: list[str | None] = [None] * len(lines)
     starts = [i for i, ln in enumerate(lines) if ln == "    {"] + [len(lines)]
-    for a, b in zip(starts, starts[1:]):
+    for a, b in zip(starts, starts[1:], strict=False):
         fid = next((m.group(1) for ln in lines[a:b] if (m := rx.match(ln))), None)
         for i in range(a, b):
             owner[i] = fid
@@ -164,7 +164,9 @@ def line_merge(base: Dataset, ours: Dataset, theirs: Dataset, fmt: str,
                            "-L", "theirs", "ours", "base", "theirs"], files)
     resolved: list[str] = []
     blocks: list[tuple[int, int, list[str]]] = []   # (start, end) in resolved, all block lines
-    state, cur_ours, cur_all = "text", [], []
+    state = "text"
+    cur_ours: list[str] = []
+    cur_all: list[str] = []
     for ln in text.split("\n")[:-1]:
         if state == "text":
             if ln.startswith("<<<<<<< ours"):
