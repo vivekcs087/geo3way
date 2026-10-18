@@ -38,7 +38,7 @@ over-reported conflicts and broke completely on re-exported files. See [Citing](
 
 ```bash
 pip install geo3way                                  # once published on PyPI
-pip install git+https://github.com/OWNER/geo3way     # latest from GitHub
+pip install git+https://github.com/vivekcs087/geo3way     # latest from GitHub
 ```
 
 ## Quick start
