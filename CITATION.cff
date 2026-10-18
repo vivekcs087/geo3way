@@ -8,7 +8,7 @@ authors:
     given-names: Vivek
     # affiliation: "TODO"
     # orcid: "https://orcid.org/0000-0000-0000-0000"
-repository-code: "https://github.com/OWNER/geo3way"
+repository-code: "https://github.com/vivekcs087/geo3way"
 keywords: [GIS, version control, three-way merge, spatial conflicts, GeoJSON, GeoPackage]
 # After the first GitHub release, add the Zenodo DOI:
 # doi: 10.5281/zenodo.XXXXXXX
