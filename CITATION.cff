@@ -11,7 +11,7 @@ authors:
 repository-code: "https://github.com/vivekcs087/geo3way"
 keywords: [GIS, version control, three-way merge, spatial conflicts, GeoJSON, GeoPackage]
 # After the first GitHub release, add the Zenodo DOI:
-# doi: 10.5281/zenodo.XXXXXXX
+doi: 10.5281/zenodo.23457151
 preferred-citation:
   type: article
   title: "Geometry-aware diff and merge for vector spatial data: design and evaluation against line-based version control"
